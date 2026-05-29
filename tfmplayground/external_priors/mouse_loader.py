@@ -1,11 +1,13 @@
+import time
+
+import matplotlib.pyplot as plt
 import torch
+from mouse_utils import ParameterSampler
 from scipy.integrate import solve_ivp
 from tabicl.prior._dataset import DisablePrinting, Prior
 from torch import Tensor
 from torch.nested import nested_tensor
 from torch.utils.data import IterableDataset
-
-from mouse_utils import ParameterSampler
 
 
 class MousePrior(Prior):
@@ -13,26 +15,34 @@ class MousePrior(Prior):
     
     def __init__(
         self,
+        batch_size: int = 256,
+        min_seq_len: int = 10,
+        max_seq_len: int = 50,
         max_interventions: int = 2,
     ):
         self.parameter_sampler = ParameterSampler(
             a_mu=0.0,
-            a_sigma=1.0,
+            a_sigma=0.2,
             b_mu=24.0,
             b_sigma=3.0,
             noise_sigma=0.2,
         )
-        self.parameter_sampler.set_slopes()
 
+        self.batch_size = batch_size
+        self.min_seq_len = min_seq_len
+        self.max_seq_len = max_seq_len
         self.max_interventions = max_interventions
     
-    def get_batch(self, batch_size: int):
+    def get_batch(self, batch_size: int | None = None) -> tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
         batch_X = []
         batch_y = []
         seq_lens = []
         train_sizes = []
+        if batch_size is None:
+            batch_size = self.batch_size
+
         for _ in range(batch_size):
-            seq_len = torch.randint(50, 200, (1,)).item()
+            seq_len = torch.randint(self.min_seq_len, self.max_seq_len, (1,)).item()
             train_size = torch.randint(int(seq_len * 0.1), int(seq_len * 0.9), (1,)).item()
             X, y = self.generate_dataset(seq_len=seq_len)
 
@@ -61,9 +71,6 @@ class MousePrior(Prior):
         intercept = self.parameter_sampler.sample_intercept().item()
         self.parameter_sampler.set_slopes(seq_len=num_interventions + 1)
         
-        print(f"num interventions: {num_interventions}, num slopes: {len(self.parameter_sampler.slopes)}")
-        print(f"interventions: {interventions}")
-        
         sol = solve_ivp(
             fun=self.linear_ode,
             t_span=(1, seq_len),
@@ -71,9 +78,6 @@ class MousePrior(Prior):
             y0=[intercept],
             args=(self.parameter_sampler.slopes, interventions),
         )
-
-        print(sol.t)
-        print(sol.y[0])
         
         X = torch.stack([torch.tensor(sol.t, dtype=torch.float32), interventions.float()], dim=1)
         
@@ -168,7 +172,9 @@ class MousePriorDataset(IterableDataset):
         device: str = "cpu",
     ):
         super().__init__()
-        self.prior = MousePrior()
+        self.prior = MousePrior(
+            batch_size=batch_size,
+        )
 
         self.batch_size = batch_size
         self.batch_size_per_gp = batch_size_per_gp
@@ -266,11 +272,18 @@ class MousePriorDataset(IterableDataset):
 
 
 if __name__ == "__main__":
-    dataset = MousePriorDataset(batch_size=4)
-    X, y, d, seq_lens, train_sizes = dataset.get_batch(4)
-    for i in range(4):
-        print(f"X[{i}]:", X[i].shape)
-        print(f"y[{i}]:", y[i].shape)
-    print(f"d: {d}")
-    print(f"seq_lens: {seq_lens}")
-    print(f"train_sizes: {train_sizes}")
+    dataset = MousePriorDataset(batch_size=100)
+    start_time = time.time()
+    X, y, d, seq_lens, train_sizes = next(iter(dataset))
+    print(f"Generated {dataset.batch_size} dataset batch in {time.time() - start_time:.2f} seconds")
+    print(f"{(time.time() - start_time) / dataset.batch_size:.2f} seconds per dataset")
+
+    for dataset_index in range(dataset.batch_size):
+        current_x = X[dataset_index, :, 0]
+        current_y = y[dataset_index, :]
+        plt.plot(current_x, current_y, label=f"y{dataset_index}")
+        plt.legend()
+        plt.xlabel('Days')
+        plt.ylabel('Weight')
+        plt.title('Batch of datasets from MousePrior')
+    plt.savefig("mouse_prior.png")

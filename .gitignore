@@ -7,6 +7,7 @@ runs/
 tfmplayground_jobs/
 *.pth
 *.h5
+*.png
 
 __pycache__/
 *.py[cod]
