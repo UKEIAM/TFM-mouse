@@ -16,8 +16,8 @@ def get_default_device():
     device = "cpu"
     if torch.backends.mps.is_available():
         device = "mps"
-    if torch.cuda.is_available():
-        device = "cuda"
+    # if torch.cuda.is_available():
+    #     device = "cuda"
     return device
 
 

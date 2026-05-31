@@ -147,7 +147,21 @@ def dump_prior_to_h5(
             y = e["y"].to("cpu").numpy()
             train_test_split_index = e["train_test_split_index"]
             if isinstance(train_test_split_index, torch.Tensor):
-                train_test_split_index = train_test_split_index.item()
+                if train_test_split_index.shape[0] == 1:
+                    train_test_split_index = train_test_split_index.item()
+                else:
+                    train_test_split_index = train_test_split_index.cpu().numpy()
+            
+            assert len(train_test_split_index) == batch_size, (
+                f"Expected {batch_size} split indices, "
+                f"got {len(train_test_split_index)}"
+            )
+            
+            print(
+                f"x.shape={x.shape}, "
+                f"max_seq_len={max_seq_len}, "
+                f"max_features={max_features}"
+            )
 
             # pad x and y to the maximum sequence length and number of features needed for tabicl
             x_padded = np.pad(

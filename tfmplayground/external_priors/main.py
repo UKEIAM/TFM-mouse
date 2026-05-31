@@ -10,6 +10,7 @@ from .base import dump_prior_to_h5
 from .tabicl_loader import TabICLPriorDataLoader
 from .tabpfn_loader import TabPFNPriorDataLoader, build_tabpfn_prior
 from .ticl_loader import TICLPriorDataLoader, build_ticl_prior
+from .mouse_loader import MousePriorDataset
 
 
 def main():
@@ -18,7 +19,7 @@ def main():
         "--lib",
         type=str,
         required=True,
-        choices=["ticl", "tabicl", "tabpfn"],
+        choices=["ticl", "tabicl", "tabpfn", "mouse"],
         help="Which library to use for the prior.",
     )
     parser.add_argument("--save_path", type=str, required=False, help="Path to save the HDF5 file.")
@@ -76,6 +77,7 @@ def main():
 
     # infer the problem_type from max_classes
     problem_type = "classification" if args.max_classes > 0 else "regression"
+    max_seq_len = args.max_seq_len
 
     if args.lib == "ticl":
         prior = TICLPriorDataLoader(
@@ -98,6 +100,22 @@ def main():
             device=device,
             **tabpfn_config,
         )
+    elif args.lib == "mouse":
+        max_num_mice = 60
+        prior = MousePriorDataset(
+            num_batches=args.num_batches,
+            batch_size=args.batch_size,
+            min_seq_len=args.min_seq_len,
+            max_seq_len=args.max_seq_len,
+            min_num_mice=20,
+            max_num_mice=max_num_mice,
+            min_train_size=1,
+            max_train_size=5,
+            max_interventions=5,
+            as_nested_tensor=False,
+            as_dict=True
+        )
+        max_seq_len = max_num_mice * args.max_seq_len
     else:  # tabicl
         prior = TabICLPriorDataLoader(
             num_steps=args.num_batches,
@@ -112,5 +130,5 @@ def main():
         )
 
     dump_prior_to_h5(
-        prior, args.max_classes, args.batch_size, args.save_path, problem_type, args.max_seq_len, args.max_features
+        prior, args.max_classes, args.batch_size, args.save_path, problem_type, max_seq_len, args.max_features
     )

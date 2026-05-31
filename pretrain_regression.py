@@ -70,6 +70,8 @@ bucket_edges = make_global_bucket_edges(
     device=device,
 )
 
+print(bucket_edges)
+
 torch.save(
     bucket_edges,
     args.savebuckets,
@@ -79,6 +81,8 @@ if ckpt:
     model.load_state_dict(ckpt["model"])
 
 dist = FullSupportBarDistribution(bucket_edges)
+print("bucket widths:", dist.bucket_widths)
+print("min width:", dist.bucket_widths.min())
 
 
 class EvaluationLoggerCallback(ConsoleLoggerCallback):
