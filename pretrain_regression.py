@@ -45,15 +45,17 @@ set_randomness_seed(2402)
 
 device = get_default_device()
 ckpt = None
-if args.loadcheckpoint:
-    ckpt = torch.load(args.loadcheckpoint)
+# if args.loadcheckpoint:
+#     ckpt = torch.load(args.loadcheckpoint)
+#     print(ckpt.keys())
 
 prior = PriorDumpDataLoader(
     filename=args.priordump,
     num_steps=args.steps,
     batch_size=args.batchsize,
     device=device,
-    starting_index=args.steps * (ckpt["epoch"] if ckpt else 0),
+    starting_index=0,
+    # starting_index=args.steps * (ckpt["epoch"] if ckpt else 0),
 )
 
 model = NanoTabPFNModel(
@@ -70,20 +72,17 @@ bucket_edges = make_global_bucket_edges(
     device=device,
 )
 
-print(bucket_edges)
-
 torch.save(
     bucket_edges,
     args.savebuckets,
 )
 
-if ckpt:
-    model.load_state_dict(ckpt["model"])
+print(bucket_edges)
+
+if args.loadcheckpoint:
+    model.load_state_dict(torch.load(args.loadcheckpoint))
 
 dist = FullSupportBarDistribution(bucket_edges)
-print("bucket widths:", dist.bucket_widths)
-print("min width:", dist.bucket_widths.min())
-
 
 class EvaluationLoggerCallback(ConsoleLoggerCallback):
     def __init__(self, tasks):
@@ -102,7 +101,10 @@ class EvaluationLoggerCallback(ConsoleLoggerCallback):
         )
 
 
-callbacks = [EvaluationLoggerCallback(TOY_TASKS_REGRESSION)]
+# callbacks = [EvaluationLoggerCallback(TOY_TASKS_REGRESSION)]
+callbacks = [ConsoleLoggerCallback()]
+
+print("===========TRAIN======================")
 
 trained_model, loss = train(
     model=model,

@@ -67,6 +67,8 @@ class MousePrior(Prior):
             elif type(self.min_train_size) is int:
                 train_size = torch.randint(self.min_train_size, self.max_train_size, (1,)).item()
                 train_size = seq_len - train_size
+            
+            print(f"sequence length: {seq_len}, train size: {train_size}")
 
             batch_X.append(X)
             batch_y.append(y)
@@ -318,8 +320,8 @@ class MousePriorDataset(IterableDataset):
 
         self._batches_generated += 1
 
-        with DisablePrinting():
-            return self.get_batch()
+        # with DisablePrinting():
+        return self.get_batch()
 
     def __repr__(self) -> str:
         """Return a string representation of the dataset.

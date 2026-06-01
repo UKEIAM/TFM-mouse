@@ -67,6 +67,7 @@ def train(
             model.train()  # Turn on the train mode
             optimizer.train()
             total_loss = 0.0
+
             for i, full_data in enumerate(prior):
                 train_test_split_index = full_data["train_test_split_index"]
                 data = (full_data["x"].to(device), full_data["y"][:, :train_test_split_index].to(device))
@@ -75,10 +76,13 @@ def train(
                 targets = full_data["target_y"].to(device)
 
                 if regression_task:
+                    print("regression task, normalizing targets")
                     y_mean = data[1].mean(dim=1, keepdim=True)
                     y_std = data[1].std(dim=1, keepdim=True) + 1e-8
                     y_norm = (data[1] - y_mean) / y_std
                     data = (data[0], y_norm)
+                
+                print(f"split: {train_test_split_index}")
 
                 output = model(data, train_test_split_index=train_test_split_index)
                 targets = targets[:, train_test_split_index:]
@@ -87,6 +91,9 @@ def train(
                 if classification_task:
                     targets = targets.reshape((-1,)).to(torch.long)
                     output = output.view(-1, output.shape[-1])
+                
+                print(f"pred: {output.shape}, target: {targets.shape}")
+                print(f"pred argmax: {output.argmax(dim=2).shape}, target: {targets.shape}")
 
                 losses = criterion(output, targets)
                 loss = losses.mean() / accumulate_gradients

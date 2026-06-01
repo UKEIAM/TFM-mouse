@@ -152,10 +152,10 @@ def dump_prior_to_h5(
                 else:
                     train_test_split_index = train_test_split_index.cpu().numpy()
             
-            assert len(train_test_split_index) == batch_size, (
-                f"Expected {batch_size} split indices, "
-                f"got {len(train_test_split_index)}"
-            )
+            # assert len(train_test_split_index) == batch_size, (
+            #     f"Expected {batch_size} split indices, "
+            #     f"got {len(train_test_split_index)}"
+            # )
             
             print(
                 f"x.shape={x.shape}, "

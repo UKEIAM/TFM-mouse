@@ -101,13 +101,13 @@ def main():
             **tabpfn_config,
         )
     elif args.lib == "mouse":
-        max_num_mice = 60
+        max_num_mice = 40
         prior = MousePriorDataset(
             num_batches=args.num_batches,
             batch_size=args.batch_size,
             min_seq_len=args.min_seq_len,
             max_seq_len=args.max_seq_len,
-            min_num_mice=20,
+            min_num_mice=10,
             max_num_mice=max_num_mice,
             min_train_size=1,
             max_train_size=5,
