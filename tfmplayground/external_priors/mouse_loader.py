@@ -63,12 +63,18 @@ class MousePrior(Prior):
             
             seq_len = X.shape[0]
             if type(self.min_train_size) is float:
-                train_size = torch.randint(int(seq_len * 0.1), int(seq_len * 0.9), (1,)).item()
+                last_mouse_seq_len = (X[:, 0] == (num_mice - 1)).sum().item()
+                train_size = torch.randint(
+                    int(last_mouse_seq_len * self.min_train_size),
+                    int(last_mouse_seq_len * self.max_train_size),
+                    (1,)
+                ).item()
+                train_size = seq_len - train_size
             elif type(self.min_train_size) is int:
                 train_size = torch.randint(self.min_train_size, self.max_train_size, (1,)).item()
                 train_size = seq_len - train_size
             
-            print(f"sequence length: {seq_len}, train size: {train_size}")
+            # print(f"sequence length: {seq_len}, train size: {train_size}")
 
             batch_X.append(X)
             batch_y.append(y)
@@ -85,6 +91,8 @@ class MousePrior(Prior):
         if not self.as_nested_tensor:
             batch_X = batch_X.to_padded_tensor(padding=0)
             batch_y = batch_y.to_padded_tensor(padding=0)
+        
+        # print(f"\nBatch sequence lengths: {seq_lens}\n")
         
         if self.as_dict:
             return {
@@ -320,8 +328,8 @@ class MousePriorDataset(IterableDataset):
 
         self._batches_generated += 1
 
-        # with DisablePrinting():
-        return self.get_batch()
+        with DisablePrinting():
+            return self.get_batch()
 
     def __repr__(self) -> str:
         """Return a string representation of the dataset.

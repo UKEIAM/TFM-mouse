@@ -8,6 +8,8 @@ import torch
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
+from .mouse_loader import MousePriorDataset
+
 
 class PriorDataLoader(DataLoader):
     """Generic DataLoader for synthetic data generation using a get_batch function.
@@ -105,6 +107,7 @@ class PriorDumpDataLoader(DataLoader):
                     y=y.to(self.device),
                     target_y=y.to(self.device),  # target_y is identical to y (for downstream compatibility)
                     train_test_split_index=train_test_split_index[0].item(),
+                    num_datapoints=num_datapoints_batch if self.has_num_datapoints else None,
                 )
 
     def __len__(self):
@@ -141,6 +144,13 @@ def dump_prior_to_h5(
             f.create_dataset("max_num_classes", data=np.array((max_classes,)), chunks=(1,))
         f.create_dataset("original_batch_size", data=np.array((batch_size,)), chunks=(1,))
         f.create_dataset("problem_type", data=problem_type, dtype=h5py.string_dtype())
+        
+        direct_num_datapoints = False
+        if isinstance(prior, MousePriorDataset):
+            print("Using direct num_datapoints as prior is MousePriorDataset")
+            direct_num_datapoints = True
+        else:
+            print("Not MousePriorDataset")
 
         for e in tqdm(prior):
             x = e["x"].to("cpu").numpy()
@@ -152,16 +162,24 @@ def dump_prior_to_h5(
                 else:
                     train_test_split_index = train_test_split_index.cpu().numpy()
             
+            if direct_num_datapoints:
+                num_datapoints = e["num_datapoints"]
+                if isinstance(num_datapoints, torch.Tensor):
+                    if num_datapoints.shape[0] == 1:
+                        num_datapoints = num_datapoints.item()
+                    else:
+                        num_datapoints = num_datapoints.cpu().numpy()
+            
             # assert len(train_test_split_index) == batch_size, (
             #     f"Expected {batch_size} split indices, "
             #     f"got {len(train_test_split_index)}"
             # )
             
-            print(
-                f"x.shape={x.shape}, "
-                f"max_seq_len={max_seq_len}, "
-                f"max_features={max_features}"
-            )
+            # print(
+            #     f"x.shape={x.shape}, "
+            #     f"max_seq_len={max_seq_len}, "
+            #     f"max_features={max_features}"
+            # )
 
             # pad x and y to the maximum sequence length and number of features needed for tabicl
             x_padded = np.pad(
@@ -179,7 +197,10 @@ def dump_prior_to_h5(
             dump_num_features[-batch_size:] = x.shape[2]
 
             dump_num_datapoints.resize(dump_num_datapoints.shape[0] + batch_size, axis=0)
-            dump_num_datapoints[-batch_size:] = x.shape[1]
+            if direct_num_datapoints:
+                dump_num_datapoints[-batch_size:] = num_datapoints
+            else:
+                dump_num_datapoints[-batch_size:] = x.shape[1]
 
             dump_train_test_split_index.resize(dump_train_test_split_index.shape[0] + batch_size, axis=0)
             dump_train_test_split_index[-batch_size:] = train_test_split_index

@@ -70,19 +70,25 @@ def train(
 
             for i, full_data in enumerate(prior):
                 train_test_split_index = full_data["train_test_split_index"]
+                num_datapoints = full_data["num_datapoints"]
+                
                 data = (full_data["x"].to(device), full_data["y"][:, :train_test_split_index].to(device))
                 if torch.isnan(data[0]).any() or torch.isnan(data[1]).any():
                     continue
                 targets = full_data["target_y"].to(device)
+                
+                # print(f"split: {train_test_split_index}")
+                # print(f"data: {data[0].shape}, {data[1].shape}, targets: {targets.shape}")
+                
+                # for i in range(10):
+                #     print(f"{i} target sample: {targets[0, train_test_split_index+i]}")
 
                 if regression_task:
-                    print("regression task, normalizing targets")
+                    # print("regression task, normalizing targets")
                     y_mean = data[1].mean(dim=1, keepdim=True)
                     y_std = data[1].std(dim=1, keepdim=True) + 1e-8
                     y_norm = (data[1] - y_mean) / y_std
                     data = (data[0], y_norm)
-                
-                print(f"split: {train_test_split_index}")
 
                 output = model(data, train_test_split_index=train_test_split_index)
                 targets = targets[:, train_test_split_index:]
@@ -92,8 +98,10 @@ def train(
                     targets = targets.reshape((-1,)).to(torch.long)
                     output = output.view(-1, output.shape[-1])
                 
-                print(f"pred: {output.shape}, target: {targets.shape}")
-                print(f"pred argmax: {output.argmax(dim=2).shape}, target: {targets.shape}")
+                # print(f"pred: {output.shape}, target: {targets.shape}")
+                # print(f"pred argmax: {output[0].argmax(dim=1)}, target: {targets[0]}")
+                
+                # exit()
 
                 losses = criterion(output, targets)
                 loss = losses.mean() / accumulate_gradients
