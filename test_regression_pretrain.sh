@@ -12,13 +12,14 @@ python -m tfmplayground.external_priors \
 --max_seq_len 50 \
 --max_classes 0
 
-# python pretrain_regression.py \
-# --epochs 100 \
-# --steps 5000 \
-# --batchsize 1 \
-# --accumulate 25 \
-# --priordump /data/PFN/Mouse/prior_mouse.h5 \
-# --saveweights /data/PFN/Mouse/pretrained_mousepfn.pth
+python pretrain_regression.py \
+--epochs 100 \
+--steps 5000 \
+--batchsize 1 \
+--accumulate 25 \
+--priordump /data/PFN/Mouse/prior_mouse.h5 \
+--saveweights /data/PFN/Mouse/pretrained_mousepfn.pth \
+--savebuckets /data/PFN/Mouse/buckets_mousepfn.pth
 # --loadcheckpoint /data/PFN/Mouse/pretrained_tabpfn.pth
 
 # python -m tfmplayground.external_priors \
@@ -39,4 +40,5 @@ python -m tfmplayground.external_priors \
 # --batchsize 2 \
 # --accumulate 2 \
 # --priordump prior_tabpfn.h5 \
-# --saveweights /data/PFN/Mouse/pretrained_tabpfn.pth
+# --saveweights /data/PFN/Mouse/pretrained_tabpfn.pth \
+# --savebuckets /data/PFN/Mouse/buckets_tabpfn.pth
