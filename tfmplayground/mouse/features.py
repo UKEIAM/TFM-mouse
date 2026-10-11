@@ -37,6 +37,8 @@ class Feature(str, Enum):
     MONTH = "month"
     YEAR = "year"
     SEASONAL = "seasonal"
+    LAG = "lag"
+    INTERVENTION = "intervention"
 
 
 DEFAULT_FEATURES = [Feature.RUNNING_INDEX]
@@ -67,6 +69,35 @@ class CyclicFeature(FeatureGenerator):
         position = np.asarray(self.position(df.index.get_level_values("timestamp")))
         df[f"{self.name}_sin"] = np.sin(2 * np.pi * position / self.period)
         df[f"{self.name}_cos"] = np.cos(2 * np.pi * position / self.period)
+        return df
+
+
+class LagFeature(FeatureGenerator):
+    """Weight at the previous visit and the days since then.
+
+    The rows are the visits of one mouse in time order, the future rows last
+    with a NaN target, so the first future row gets the last known weight.
+    The first visit has no previous weight (NaN).
+    """
+
+    def generate(self, df: pd.DataFrame) -> pd.DataFrame:
+        df = df.copy()
+        timestamps = df.index.get_level_values("timestamp")
+        df["lag_1"] = df["target"].shift(1).to_numpy()
+        df["days_since_lag"] = pd.Series(timestamps).diff().dt.days.to_numpy()
+        return df
+
+
+class InterventionFeature(FeatureGenerator):
+    """1 on visits with a treatment, else 0.
+
+    Copies the ``intervention`` covariate, which is dropped before the model.
+    Treatments are scheduled, so the flag is also known for the future rows.
+    """
+
+    def generate(self, df: pd.DataFrame) -> pd.DataFrame:
+        df = df.copy()
+        df["intervention_flag"] = (df["intervention"] > 0).astype(int)
         return df
 
 
@@ -124,6 +155,17 @@ _REGISTRY: dict[Feature, _FeatureSpec] = {
         "detected over the visit index, not days, and are a weak signal for short series.",
         [f"{f}_#{i}" for i in range(SEASONAL_TOP_K) for f in ("sin", "cos")],
         lambda: AutoSeasonalFeature({"max_top_k": SEASONAL_TOP_K}),
+    ),
+    Feature.LAG: _FeatureSpec(
+        "Weight at the previous visit and the days since then. Lets the model learn the change "
+        "from one visit to the next, also from other mice in the context.",
+        ["lag_1", "days_since_lag"],
+        LagFeature,
+    ),
+    Feature.INTERVENTION: _FeatureSpec(
+        "Treatment (radio-, chemotherapy) on this visit, 0/1.",
+        ["intervention_flag"],
+        InterventionFeature,
     ),
 }
 

@@ -165,6 +165,13 @@ def _time_features(
     return add_time_features(*to_timeseries(context_df[[*BASE_COLUMNS, *COVARIATE_COLUMNS]], future_df), features)
 
 
+def _predict_tabpfn(predictor, train_tsdf, test_tsdf) -> pd.DataFrame:
+    """Run ``predictor`` and return the columns ``item_id``, ``prediction``, ``q05`` and ``q95``."""
+    pred = predictor.predict(train_tsdf, test_tsdf, quantiles=list(QUANTILES))
+    pred = pd.DataFrame(pred).reset_index()
+    return pred.rename(columns={"target": "prediction", QUANTILES[0]: "q05", QUANTILES[1]: "q95"})
+
+
 def tabpfn_predictor(num_workers_per_gpu: int = 4):
     """Local ``TabPFNTimeSeriesPredictor`` with several workers per GPU.
 
@@ -223,13 +230,9 @@ def predict_tabpfn_rolling(
             target_df[target_df["item_id"].isin(item_ids)],
             features,
         )
-        pred = predictor.predict(
-            train_tsdf.drop(columns=COVARIATE_COLUMNS),
-            test_tsdf.drop(columns=COVARIATE_COLUMNS),
-            quantiles=list(QUANTILES),
+        return _predict_tabpfn(
+            predictor, train_tsdf.drop(columns=COVARIATE_COLUMNS), test_tsdf.drop(columns=COVARIATE_COLUMNS)
         )
-        pred = pd.DataFrame(pred).reset_index()
-        return pred.rename(columns={"target": "prediction", QUANTILES[0]: "q05", QUANTILES[1]: "q95"})
 
     return _predict_cached(target_df, predict, cache_path, use_cache, chunk_size, "TabPFN")
 
