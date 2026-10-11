@@ -216,14 +216,21 @@ def build_bar_model(weights: np.ndarray, specs: dict = BAR_SPECS):
     return model
 
 
-def sample_bar(model, draws: int = BAR_DRAWS, seed: int = BAR_SEED, progress: bool = False, **kwargs):
+def sample_bar(
+    model,
+    draws: int = BAR_DRAWS,
+    chains: int = BAR_CHAINS,
+    seed: int = BAR_SEED,
+    progress: bool = False,
+    **kwargs,
+):
     """Sample prior, posterior and posterior predictive (``sample_pp``)."""
     import pymc as pm
 
     with model:
         idata = pm.sample_prior_predictive()
         idata.extend(
-            pm.sample(draws, chains=BAR_CHAINS, random_seed=seed, target_accept=BAR_TARGET_ACCEPT,
+            pm.sample(draws, chains=chains, random_seed=seed, target_accept=BAR_TARGET_ACCEPT,
                       progressbar=progress, **kwargs)
         )
         idata.extend(pm.sample_posterior_predictive(idata, progressbar=progress))

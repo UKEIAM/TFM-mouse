@@ -84,6 +84,71 @@ def mape(preds: np.ndarray, target: np.ndarray) -> np.ndarray:
     return errors if preds.ndim == 1 else np.mean(errors, axis=0)
 
 
+def _mean_over_mice(
+    values: pd.Series,
+    df: pd.DataFrame,
+    mouse: str,
+    role: str,
+    therapy_types: dict[int, str],
+) -> pd.Series:
+    """Mean of ``values`` per mouse, then averaged over the mice of each therapy
+    type. ``Overall`` is the mean over all mice in ``OVERALL_THERAPIES`` (not
+    the mean of the therapy types).
+    """
+    per_mouse = values.groupby([df[role], df[mouse]]).mean()
+    roles = per_mouse.index.get_level_values(0)
+    result = per_mouse.groupby(level=0).mean().rename(therapy_types)
+    result["Overall"] = per_mouse[roles.isin(OVERALL_THERAPIES)].mean()
+    return result
+
+
+def interval_coverage(
+    df: pd.DataFrame,
+    truth: str = "truth",
+    lower: str = "q05",
+    upper: str = "q95",
+    mouse: str = "mouse_id",
+    role: str = "role",
+    therapy_types: dict[int, str] = THERAPY_TYPES,
+) -> pd.Series:
+    """Fraction of ground truths inside the predicted interval ``[lower, upper]``.
+
+    Averaged as in :func:`_mean_over_mice`. Rows without a truth or interval
+    are left out. Returns the therapy names that occur in ``df`` plus ``Overall``.
+    """
+    df = df.dropna(subset=[truth, lower, upper])
+    inside = df[truth].between(df[lower], df[upper]).astype(float)
+    return _mean_over_mice(inside, df, mouse, role, therapy_types)
+
+
+def interval_width(
+    df: pd.DataFrame,
+    truth: str = "truth",
+    lower: str = "q05",
+    upper: str = "q95",
+    mouse: str = "mouse_id",
+    role: str = "role",
+    therapy_types: dict[int, str] = THERAPY_TYPES,
+) -> pd.Series:
+    """Mean width ``upper - lower`` of the predicted interval, on the same rows
+    and averaged in the same way as :func:`interval_coverage`, so a higher
+    coverage can be checked against a wider interval.
+    """
+    df = df.dropna(subset=[truth, lower, upper])
+    return _mean_over_mice(df[upper] - df[lower], df, mouse, role, therapy_types)
+
+
+def append_interval_row(table: pd.DataFrame, model_name: str, values: pd.Series) -> pd.DataFrame:
+    """Add the output of :func:`interval_coverage` or :func:`interval_width` as a
+    row ``model_name`` to a results table.
+    """
+    row = {column: np.nan for column in table.columns}
+    row["Model"] = model_name
+    row.update({column: value for column, value in values.items() if column in table.columns})
+    table.loc[len(table)] = row
+    return table
+
+
 # ---------------------------------------------------------------------------
 # Prediction
 # ---------------------------------------------------------------------------
