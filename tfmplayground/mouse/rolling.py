@@ -288,15 +288,21 @@ def rolling_predictions(
 
     Returns one row per model and origin with the columns ``model``,
     ``mouse_id``, ``step`` (number of measurements in the context),
-    ``timestamp``, ``days_since`` (first visit of the mouse), ``role``,
-    ``truth``, ``prediction``, ``q05``, ``q95``, ``ae`` and ``ape``.
+    ``timestamp``, ``days_since`` (first visit of the mouse),
+    ``days_before_death`` and ``steps_before_death`` (days and measurements
+    until the last measurement of the mouse, which stands in for its death),
+    ``role``, ``truth``, ``prediction``, ``q05``, ``q95``, ``ae`` and ``ape``.
     """
     context_df, target_df = rolling_origins(df, item_ids, min_context, every, fraction, seed)
 
     first_visit = pd.to_datetime(df.groupby("item_id")["timestamp"].min())
+    last_visit = pd.to_datetime(df.groupby("item_id")["timestamp"].max())
+    num_measurements = df.groupby("item_id").size()
     roles = df.groupby("item_id")["role"].first()
     origins = target_df[["item_id", "mouse_id", "step", "timestamp", "target"]].rename(columns={"target": "truth"})
     origins["days_since"] = (origins["timestamp"] - origins["mouse_id"].map(first_visit)).dt.days
+    origins["days_before_death"] = (origins["mouse_id"].map(last_visit) - origins["timestamp"]).dt.days
+    origins["steps_before_death"] = origins["mouse_id"].map(num_measurements) - 1 - origins["step"]
     origins["role"] = origins["mouse_id"].map(roles)
 
     results = []
@@ -311,8 +317,8 @@ def rolling_predictions(
     long_df = pd.concat(results, ignore_index=True)
     long_df["ae"] = mae(long_df["prediction"].to_numpy(float), long_df["truth"].to_numpy(float))
     long_df["ape"] = mape(long_df["prediction"].to_numpy(float), long_df["truth"].to_numpy(float))
-    columns = ["model", "mouse_id", "step", "timestamp", "days_since", "role", "truth",
-               "prediction", "q05", "q95", "ae", "ape"]
+    columns = ["model", "mouse_id", "step", "timestamp", "days_since", "days_before_death",
+               "steps_before_death", "role", "truth", "prediction", "q05", "q95", "ae", "ape"]
     return long_df[columns].sort_values(["model", "mouse_id", "step"]).reset_index(drop=True)
 
 
@@ -426,14 +432,23 @@ def error_by_position(
     long_df: pd.DataFrame,
     x: str = "step",
     bins: int | Iterable[float] | None = None,
+    window: int | None = None,
 ) -> pd.DataFrame:
     """Mean absolute (percentage) error per model at each position in the life.
 
-    ``x`` is ``"step"`` (measurements in the context) or ``"days_since"``.
-    With ``bins`` the positions are grouped with ``pd.cut``. Also returns the
-    number of predictions ``n`` and the standard error of the AE and APE.
+    ``x`` is ``"step"`` (measurements in the context), ``"days_since"``,
+    ``"days_before_death"`` or ``"steps_before_death"``.
+    With ``bins`` the positions are grouped with ``pd.cut``. With ``window``
+    every position averages the predictions of the ``window`` positions
+    centred on it (a moving average that moves one position at a time), so
+    ``n`` is the number of predictions in the window. Also returns the number
+    of predictions ``n`` and the standard error of the AE and APE.
     """
+    if bins is not None and window is not None:
+        raise ValueError("Use either bins or window, not both")
     common = common_origins(long_df)
+    if window is not None:
+        return _moving_window_errors(common, x, window)
     position = pd.cut(common[x], bins) if bins is not None else common[x]
     grouped = common.groupby(["model", position], observed=True)
     result = grouped.agg(
@@ -442,6 +457,31 @@ def error_by_position(
     if bins is not None:
         result[x] = result[x].map(lambda interval: interval.mid).astype(float)
     return result
+
+
+def _moving_window_errors(common: pd.DataFrame, x: str, window: int) -> pd.DataFrame:
+    """Pool the predictions of every centred window of ``window`` positions.
+
+    Works on sums per position, so a position with many predictions weighs
+    more than one with few, as if the rows of the window were averaged directly.
+    """
+    if window < 1:
+        raise ValueError("window must be at least 1")
+    stats = common.assign(ae2=common["ae"] ** 2, ape2=common["ape"] ** 2, n=1)
+    results = []
+    for model, group in stats.groupby("model", sort=False):
+        sums = group.groupby(x)[["n", "ae", "ae2", "ape", "ape2"]].sum()
+        positions = np.arange(int(sums.index.min()), int(sums.index.max()) + 1)
+        sums = sums.reindex(positions, fill_value=0).rolling(window, center=True, min_periods=1).sum()
+        n = sums["n"]
+        result = pd.DataFrame({"model": model, x: positions, "n": n.astype(int)})
+        for metric in ("ae", "ape"):
+            mean = sums[metric] / n
+            var = (sums[f"{metric}2"] - n * mean**2) / (n - 1)
+            result[metric] = mean
+            result[f"{metric}_se"] = np.sqrt(var.clip(lower=0) / n).where(n > 1)
+        results.append(result[n.to_numpy() > 0])
+    return pd.concat(results, ignore_index=True)
 
 
 # ---------------------------------------------------------------------------
@@ -459,20 +499,32 @@ def plot_error_by_position(
     bins: int | Iterable[float] | None = None,
     min_count: int = 5,
     show_counts: bool | None = None,
+    window: int | None = None,
 ):
     """Error per model against the position in the life, with a 95% band.
+
+    For ``x`` relative to death (``"days_before_death"`` or
+    ``"steps_before_death"``) the x-axis is reversed, so death is on the right.
 
     With ``show_counts`` a lower panel shows the number of predictions at each
     position, which shrinks towards the end of life. By default it is only
     shown for more than one mouse, for a single mouse every count is 1.
     Positions with fewer than ``min_count`` predictions are not drawn.
+    ``bins`` and ``window`` smooth the line, see :func:`error_by_position`;
+    with ``window`` the counts are those of each window.
     Returns ``(fig, ax)``, or ``(fig, (ax, ax_counts))`` with the counts panel.
     """
-    errors = error_by_position(long_df, x, bins)
+    errors = error_by_position(long_df, x, bins, window)
     errors = errors[errors["n"] >= min_count]
     colors = _model_colors(long_df["model"].unique())
     labels = {"ae": "Mean absolute error (g)", "ape": "Mean absolute percentage error"}
-    xlabels = {"step": "Measurements in the context", "days_since": "Days since the first visit"}
+    xlabels = {
+        "step": "Measurements in the context",
+        "days_since": "Days since the first visit",
+        "days_before_death": "Days before death (last measurement)",
+        "steps_before_death": "Measurements before death (last measurement)",
+    }
+    before_death = x.endswith("_before_death")
     if show_counts is None:
         show_counts = long_df["mouse_id"].nunique() > 1
 
@@ -489,7 +541,14 @@ def plot_error_by_position(
         ax.fill_between(group[x], (group[metric] - band).clip(lower=0), group[metric] + band, color=colors[model], alpha=0.15, linewidth=0)
 
     ax.set_ylabel(labels.get(metric, metric))
-    ax.set_title(f"One-step-ahead error over the life of the mice ({labels.get(metric, metric).lower()})")
+    period = "before death" if before_death else "over the life of the mice"
+    title = f"One-step-ahead error {period} ({labels.get(metric, metric).lower()})"
+    if window is not None:
+        unit = "days" if x.startswith("days") else "measurements"
+        title += f"\nmoving average over {window} {unit}"
+    ax.set_title(title)
+    if before_death:
+        ax.invert_xaxis()
     ax.legend(frameon=False)
     ax.grid(axis="y", alpha=0.3)
     ax.spines[["top", "right"]].set_visible(False)
@@ -500,8 +559,11 @@ def plot_error_by_position(
         return fig, ax
 
     counts = errors.drop_duplicates(x)
-    width = np.diff(np.sort(counts[x].unique())).min() * 0.8 if len(counts) > 1 else 0.8
-    ax_n.bar(counts[x], counts["n"], width=width, color=INTERVENTION_COLOR)
+    if window is not None:
+        ax_n.fill_between(counts[x], counts["n"], step="mid", color=INTERVENTION_COLOR, linewidth=0)
+    else:
+        width = np.diff(np.sort(counts[x].unique())).min() * 0.8 if len(counts) > 1 else 0.8
+        ax_n.bar(counts[x], counts["n"], width=width, color=INTERVENTION_COLOR)
     ax_n.set_ylabel("Predictions")
     ax_n.set_xlabel(xlabels.get(x, x))
     ax_n.spines[["top", "right"]].set_visible(False)
