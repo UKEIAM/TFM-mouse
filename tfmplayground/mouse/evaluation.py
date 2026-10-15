@@ -392,10 +392,10 @@ def plot_metric(df: pd.DataFrame, metric_name: str):
 
     plot_df.plot(kind="bar", ax=ax, width=0.8)
 
-    ax.set_title(metric_name, fontsize=16)
+    # ax.set_title(metric_name, fontsize=16)
     ax.set_xlabel("Model")
     ax.set_ylabel(metric_name)
-    ax.legend(title="Treatment")
+    ax.legend(title="Treatment", loc="upper left")
     ax.tick_params(axis="x", rotation=45)
     plt.tight_layout()
 

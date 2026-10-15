@@ -388,7 +388,7 @@ def append_rolling_rows(
         values = metrics.loc[model]
         for table, metric in ((table_mae, "MAE"), (table_mape, "MAPE")):
             row = {column: np.nan for column in table.columns}
-            row["Model"] = f"{model} ({suffix})"
+            row["Model"] = f"{model}"
             row.update({role: value for role, value in values[metric].items() if role in table.columns})
             table.loc[len(table)] = row
     return table_mae, table_mape
@@ -524,8 +524,8 @@ def plot_error_by_position(
     xlabels = {
         "step": "Measurements in the context",
         "days_since": "Days since the first visit",
-        "days_before_death": "Days before death (last measurement)",
-        "steps_before_death": "Measurements before death (last measurement)",
+        "days_before_death": "Days before last measurement",
+        "steps_before_death": "Measurements before last measurement",
     }
     before_death = x.endswith("_before_death")
     if show_counts is None:
@@ -544,12 +544,12 @@ def plot_error_by_position(
         ax.fill_between(group[x], (group[metric] - band).clip(lower=0), group[metric] + band, color=colors[model], alpha=0.15, linewidth=0)
 
     ax.set_ylabel(labels.get(metric, metric))
-    period = "before death" if before_death else "over the life of the mice"
-    title = f"One-step-ahead error {period} ({labels.get(metric, metric).lower()})"
-    if window is not None:
-        unit = "days" if x.startswith("days") else "measurements"
-        title += f"\nmoving average over {window} {unit}"
-    ax.set_title(title)
+    # period = "before death" if before_death else "over the life of the mice"
+    # title = f"One-step-ahead error {period} ({labels.get(metric, metric).lower()})"
+    # if window is not None:
+    #     unit = "days" if x.startswith("days") else "measurements"
+    #     title += f"\nmoving average over {window} {unit}"
+    # ax.set_title(title)
     if before_death:
         ax.invert_xaxis()
     ax.legend(frameon=False)
@@ -599,8 +599,9 @@ def plot_mouse_rolling(
         ax.plot(pred["timestamp"], pred["prediction"], color=colors[model], linewidth=1.5, marker="o",
                 markersize=4, label=model, zorder=2)
         if show_intervals and pred[["q05", "q95"]].notna().all(axis=None):
+            # No legend entry, the interval has the color of its model's line
             ax.fill_between(pred["timestamp"], pred["q05"], pred["q95"], color=colors[model], alpha=0.15,
-                            linewidth=0, label=f"{model} 90% interval")
+                            linewidth=0)
 
     for i, timestamp in enumerate(timestamps[series["intervention"].to_numpy() == 1]):
         ax.axvline(timestamp, color=INTERVENTION_COLOR, linestyle="--", linewidth=1,
