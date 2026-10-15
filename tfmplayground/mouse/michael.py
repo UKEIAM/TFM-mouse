@@ -47,7 +47,14 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from .preprocessing import MOUSE_COLUMNS, RAW_PICKLE_PATH, TREATMENT_SOURCES, VISIT_COLUMNS, PreprocessingConfig
+from .preprocessing import (
+    MOUSE_COLUMNS,
+    RAW_PICKLE_PATH,
+    TREATMENT_SOURCES,
+    VISIT_COLUMNS,
+    PreprocessingConfig,
+    time_of_day,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -103,9 +110,10 @@ def load_dataset(
 
     Returns the format of :func:`tfmplayground.mouse.preprocessing.load_dataset`:
     one row per mouse per day with the columns ``item_id``, ``timestamp``,
-    ``time``, ``target`` (the weight), the treatment counts, ``intervention``,
-    ``trail`` and ``role``. ``time`` is that of the first visit of the day or,
-    for days moved to a treatment, the start of the first treatment.
+    ``time``, ``time_of_day`` (hours since midnight of ``time``), ``target``
+    (the weight), the treatment counts, ``intervention``, ``trail`` and
+    ``role``. ``time`` is that of the first visit of the day or, for days moved
+    to a treatment, the start of the first treatment.
     """
     config = config or PreprocessingConfig()
     rng = rng or np.random.default_rng(config.seed)
@@ -158,10 +166,11 @@ def load_dataset(
     agg = {"weight": "mean"} | {treatment: "sum" for treatment in TREATMENTS} | {"trail": "first", "role": "first"}
     df = events.groupby(["id", "date"], as_index=False).agg(agg).dropna(subset=["weight"])
     df = df.merge(times, on=["id", "date"], how="left")
+    df["time_of_day"] = time_of_day(df["time"])
     df["intervention"] = df[list(TREATMENTS)].sum(axis=1).clip(upper=1)
 
     treatment_columns = ["radio", "chemo"] + (["surgery"] if config.include_surgery else [])
-    df = df[["id", "date", "time", "weight", *treatment_columns, "intervention", "trail", "role"]]
+    df = df[["id", "date", "time", "time_of_day", "weight", *treatment_columns, "intervention", "trail", "role"]]
 
     ids = rng.choice(keep, size=min(config.num_animals, len(keep)), replace=False)
     logger.info(f"Animals: {len(per_animal)} -> {len(keep)} after filtering -> {len(ids)} sampled")

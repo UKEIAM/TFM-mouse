@@ -212,7 +212,7 @@ def predict_tabpfn_rolling(
     """Predict every origin with a ``TabPFNTimeSeriesPredictor``.
 
     The time features are computed per origin on its own context. As in the
-    notebook, the covariates ``id`` and ``intervention`` are not used.
+    notebook, the covariates ``id``, ``intervention`` and ``time_of_day`` are not used.
 
     With ``cache_path`` (a parquet file) the forecasts are cached as in
     :func:`_predict_cached`, saved after every chunk of ``chunk_size``

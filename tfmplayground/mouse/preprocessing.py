@@ -55,7 +55,10 @@ THERAPY_TYPES = {
 }
 
 BASE_COLUMNS = ["item_id", "timestamp", "target"]
-COVARIATE_COLUMNS = ["id", "intervention"]
+# Raw covariates, input of the feature generators and dropped before the TabPFN models
+COVARIATE_COLUMNS = ["id", "intervention", "time_of_day"]
+# The covariates that are direct inputs of the self-trained PFNs
+MODEL_COVARIATE_COLUMNS = ["id", "intervention"]
 
 
 @dataclass
@@ -103,6 +106,11 @@ def _assign_treatments(visits: pd.DataFrame, treatments: pd.DataFrame, column: s
     return visits
 
 
+def time_of_day(time: pd.Series) -> pd.Series:
+    """Hours since midnight (0 to 24) of ``"HH:MM:SS"`` times, NaN where missing."""
+    return pd.to_timedelta(time, errors="coerce").dt.total_seconds() / 3600
+
+
 def load_dataset(
     path: str = RAW_PICKLE_PATH,
     config: PreprocessingConfig | None = None,
@@ -111,8 +119,9 @@ def load_dataset(
     """Build the per-mouse time series from the raw tables at ``path``.
 
     Returns one row per mouse per day with the columns ``item_id``,
-    ``timestamp``, ``target`` (the weight), ``time``, the treatment counts,
-    ``intervention``, ``trail`` and ``role``.
+    ``timestamp``, ``target`` (the weight), ``time``, ``time_of_day`` (hours
+    since midnight of ``time``), the treatment counts, ``intervention``,
+    ``trail`` and ``role``.
     """
     config = config or PreprocessingConfig()
     rng = rng or np.random.default_rng(config.seed)
@@ -146,6 +155,7 @@ def load_dataset(
         | {score: "max" for score in SCORE_COLUMNS.values() if score in visits}
     )
     df = visits.groupby(["id", "date"], as_index=False).agg(agg)
+    df["time_of_day"] = time_of_day(df["time"])
 
     # Keep animals with enough measurements, possible weights and an intervention
     per_animal = df.groupby("id").agg(

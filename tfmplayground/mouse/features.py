@@ -21,7 +21,7 @@ from tabpfn_time_series import FeatureTransformer, TimeSeriesDataFrame
 from tabpfn_time_series.features import AutoSeasonalFeature, RunningIndexFeature
 from tabpfn_time_series.features.feature_generator_base import FeatureGenerator
 
-from .preprocessing import COVARIATE_COLUMNS
+from .preprocessing import MODEL_COVARIATE_COLUMNS
 
 # Number of seasonal periods detected by Feature.SEASONAL
 SEASONAL_TOP_K = 3
@@ -32,6 +32,7 @@ class Feature(str, Enum):
 
     RUNNING_INDEX = "running_index"
     DAYS_SINCE = "days_since"
+    TIME_OF_DAY = "time_of_day"
     DAY_OF_WEEK = "day_of_week"
     DAY_OF_YEAR = "day_of_year"
     MONTH = "month"
@@ -57,16 +58,28 @@ class DaysSinceFirstVisitFeature(FeatureGenerator):
 
 
 class CyclicFeature(FeatureGenerator):
-    """Sine and cosine encoding of a calendar position with a given period."""
+    """Sine and cosine encoding of a calendar position with a given period.
 
-    def __init__(self, name: str, position: Callable[[pd.DatetimeIndex], np.ndarray], period: float):
+    ``position`` maps the timestamps, or ``df[column]`` if ``column`` is
+    given, to the position in the cycle.
+    """
+
+    def __init__(
+        self,
+        name: str,
+        position: Callable[[pd.DatetimeIndex | pd.Series], np.ndarray],
+        period: float,
+        column: str | None = None,
+    ):
         self.name = name
         self.position = position
         self.period = period
+        self.column = column
 
     def generate(self, df: pd.DataFrame) -> pd.DataFrame:
         df = df.copy()
-        position = np.asarray(self.position(df.index.get_level_values("timestamp")))
+        source = df[self.column] if self.column else df.index.get_level_values("timestamp")
+        position = np.asarray(self.position(source))
         df[f"{self.name}_sin"] = np.sin(2 * np.pi * position / self.period)
         df[f"{self.name}_cos"] = np.cos(2 * np.pi * position / self.period)
         return df
@@ -129,6 +142,12 @@ _REGISTRY: dict[Feature, _FeatureSpec] = {
         "Days since the first visit of each mouse, keeps the gaps between irregular visits.",
         ["days_since"],
         DaysSinceFirstVisitFeature,
+    ),
+    Feature.TIME_OF_DAY: _FeatureSpec(
+        "Daily cycle of the measurement time (sin/cos, period 24 h). Like the date, the time of "
+        "the predicted visit is known.",
+        _cyclic_columns("time_of_day"),
+        lambda: CyclicFeature("time_of_day", lambda hours: hours, 24, column="time_of_day"),
     ),
     Feature.DAY_OF_WEEK: _FeatureSpec(
         "Weekly cycle (sin/cos), e.g. effects of the visit schedule.",
@@ -202,7 +221,7 @@ def feature_columns(features: Iterable[Feature | str] = DEFAULT_FEATURES) -> lis
 
 def model_columns(
     features: Iterable[Feature | str] = DEFAULT_FEATURES,
-    covariates: list[str] = COVARIATE_COLUMNS,
+    covariates: list[str] = MODEL_COVARIATE_COLUMNS,
 ) -> list[str]:
     """The input columns of the PFN models: id, time features, other covariates."""
     return ["id", *feature_columns(features), *[c for c in covariates if c != "id"]]
