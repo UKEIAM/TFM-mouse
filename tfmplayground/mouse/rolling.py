@@ -271,6 +271,23 @@ def predict_eagle_rolling(
     )
 
 
+def predict_moving_average_rolling(
+    context_df: pd.DataFrame,
+    target_df: pd.DataFrame,
+    window: int = 2,
+) -> pd.DataFrame:
+    """Predict every origin with the mean of its last ``window`` weights.
+
+    A naive baseline with no fit and no interval, so it is left out of the
+    coverage and width tables. An origin with fewer than ``window``
+    measurements averages all of them. ``window=1`` is the last value.
+    """
+    if window < 1:
+        raise ValueError("window must be at least 1")
+    last = context_df.sort_values(["item_id", "timestamp"], kind="stable").groupby("item_id").tail(window)
+    return last.groupby("item_id", as_index=False)["target"].mean().rename(columns={"target": "prediction"})
+
+
 # ---------------------------------------------------------------------------
 # Rolling predictions
 # ---------------------------------------------------------------------------
